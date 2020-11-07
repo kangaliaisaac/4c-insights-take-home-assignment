@@ -2,8 +2,16 @@
 
 import os
 import sqlalchemy
-
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy import (
+    Table,
+    Column,
+    Integer,
+    BigInteger,
+    Date,
+    String,
+    MetaData,
+    ForeignKey,
+    UniqueConstraint)
 
 
 DB_USER = os.getenv("DB_USER")
@@ -14,51 +22,57 @@ engine = sqlalchemy.create_engine(
     f"mysql+mysqlconnector://{DB_USER}:{DB_PASS}@localhost:3306/{DB_NAME}",
     echo=True
 )
-Base = declarative_base()
+
+metadata = MetaData()
 
 
-class Vertical(Base):
-    __tablename__ = "vertical"
+verticals = Table(
+    "verticals",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column(
+        "name",
+        String(length=255),
+        nullable=False,
+        unique=True
+    )
+)
 
-    id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)
-    name = sqlalchemy.Column(sqlalchemy.String(length=255), nullable=False)
 
-
-class Brand(Base):
-    __tablename__ = "brand"
-
-    id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)
-    name = sqlalchemy.Column(sqlalchemy.String(length=255), nullable=False)
-    vertical = sqlalchemy.Column(
-        sqlalchemy.Integer,
-        sqlalchemy.ForeignKey(
-            Vertical.__tablename__ + ".id",
+brands = Table(
+    "brands",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("name", String(length=255), nullable=False),
+    Column(
+        "vertical",
+        Integer,
+        ForeignKey(
+            "verticals.id",
             ondelete="RESTRICT",
-            name="brand_vertical_id_fkey"),
-        nullable=False)
+            name="brand_vertical_pk_fkey"),
+        nullable=False),
+    UniqueConstraint("name", "vertical")
+)
 
-    sqlalchemy.UniqueConstraint("name", "vertical")
 
-
-class Ad(Base):
-    __tablename__ = "ad"
-
-    ad_spot_id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)
-    brand = sqlalchemy.Column(
-        sqlalchemy.Integer,
-        sqlalchemy.ForeignKey(
-            Brand.__tablename__ + ".id",
+ads = Table(
+    "ads",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("ad_spot_id", Integer, nullable=False),
+    Column(
+        "brand",
+        Integer,
+        ForeignKey(
+            "brands.id",
             ondelete="RESTRICT",
-            name="ad_brand_id_fkey"
-        ),
-        nullable=False)
-    household_id = sqlalchemy.Column(sqlalchemy.Integer, nullable=False)
-    ad_date = sqlalchemy.Column(sqlalchemy.Date, nullable=False)
-    view_duration = sqlalchemy.Column(sqlalchemy.BigInteger, nullable=False)
+            name="ad_brand_pk_fkey"
+        ), nullable=False),
+    Column("household_id", Integer, nullable=False),
+    Column("ad_date", Date, nullable=False),
+    Column("view_duration", BigInteger, nullable=False)
+)
 
 
-Base.metadata.create_all(engine)
-
-Session = sqlalchemy.orm.session.sessionmaker()
-Session.configure(bind=engine)
-session = Session()
+metadata.create_all(engine)
