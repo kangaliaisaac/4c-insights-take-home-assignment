@@ -1,3 +1,4 @@
+import datetime
 import os
 import pandas as pd
 from sqlalchemy.dialects.mysql import insert
@@ -51,6 +52,44 @@ def batch_load_data():
         })
 
 
+def validate_date_string(date_text):
+    try:
+        datetime.datetime.strptime(date_text, '%Y-%m-%d')
+    except ValueError:
+        raise ValueError("Incorrect data format, should be YYYY-MM-DD")
+
+
+def _filter_by_brands(statement, brands):
+    if not isinstance(brands, tuple):
+        raise TypeError("brands should be a tuple")
+    _expression = (
+        F"= '{brands[0]}'"
+        if len(brands) == 1
+        else F"IN {brands}")
+    _and_stmt = F"AND b.name {_expression}"
+    return text(" ".join([statement.text, _and_stmt]))
+
+
+def _filter_by_household_ids(statement, household_ids):
+    if not isinstance(household_ids, tuple):
+        raise TypeError("household_ids should be a tuple")
+    _expression = (
+        F"= {household_ids[0]}"
+        if len(household_ids) == 1
+        else F"IN {household_ids}")
+    _and_stmt = F"AND household_id {_expression}"
+    return text(" ".join([statement.text, _and_stmt]))
+
+
+def _filter_by_period(statement, date_from, date_to):
+    if not isinstance(date_from, str) and not isinstance(date_to, str):
+        raise TypeError("date_from and date_to should be strings")
+    validate_date_string(date_from)
+    validate_date_string(date_to)
+    _and_stmt = F"AND ad_date BETWEEN '{date_from}' AND '{date_to}'"
+    return text(" ".join([statement.text, _and_stmt]))
+
+
 def get_number_of_ads_viewed(
         vertical,
         brands=None,
@@ -69,8 +108,6 @@ def get_number_of_ads_viewed(
     Output
     ------
     - Number of ads viewed
-    - Number of distinct ads
-    - Total Duration of ads viewed (distributed by household ids)
     """
     conn = engine.connect()
     statement = text(F"""
@@ -78,8 +115,14 @@ def get_number_of_ads_viewed(
         FROM ads a
             INNER JOIN brands b ON a.brand = b.id 
             INNER JOIN verticals v on b.vertical = v.id 
-        WHERE v.name = '{str(vertical)}';
+        WHERE v.name = '{str(vertical)}'
     """)
+    if brands:
+        statement = _filter_by_brands(statement, brands)
+    if household_ids:
+        statement = _filter_by_household_ids(statement, household_ids)
+    if date_from and date_to:
+        statement = _filter_by_period(statement, date_from, date_to)
     result = conn.execute(statement)
     return result.fetchone()[0]
 
@@ -101,9 +144,7 @@ def get_number_of_distinct_ads(
 
     Output
     ------
-    - Number of ads viewed
     - Number of distinct ads
-    - Total Duration of ads viewed (distributed by household ids)
     """
     conn = engine.connect()
     statement = text(F"""
@@ -111,8 +152,14 @@ def get_number_of_distinct_ads(
         FROM ads a 
             INNER JOIN brands b ON a.brand = b.id 
             INNER JOIN verticals v ON b.vertical = v.id 
-        WHERE v.name = '{str(vertical)}';
+        WHERE v.name = '{str(vertical)}'
     """)
+    if brands:
+        statement = _filter_by_brands(statement, brands)
+    if household_ids:
+        statement = _filter_by_household_ids(statement, household_ids)
+    if date_from and date_to:
+        statement = _filter_by_period(statement, date_from, date_to)
     result = conn.execute(statement)
     return result.fetchone()[0]
 
@@ -134,8 +181,6 @@ def get_total_duration_of_ads_viewed_per_household(
 
     Output
     ------
-    - Number of ads viewed
-    - Number of distinct ads
     - Total Duration of ads viewed (distributed by household ids)
     """
     conn = engine.connect()
@@ -144,7 +189,15 @@ def get_total_duration_of_ads_viewed_per_household(
         FROM ads a 
             INNER JOIN brands b ON a.brand = b.id 
             INNER JOIN verticals v ON b.vertical = v.id 
-        WHERE v.name = '{str(vertical)}' GROUP BY 1;
+        WHERE v.name = '{str(vertical)}'
     """)
+    if brands:
+        statement = _filter_by_brands(statement, brands)
+    if household_ids:
+        statement = _filter_by_household_ids(statement, household_ids)
+    if date_from and date_to:
+        statement = _filter_by_period(statement, date_from, date_to)
+
+    statement = " ".join([statement.text, " GROUP BY 1;"])
     result = conn.execute(statement)
     return result.fetchall()
